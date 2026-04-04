@@ -1,0 +1,21 @@
+# IDE
+.idea/
+.vscode/
+
+# Java / Spring
+target/
+*.log
+
+# Flutter
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+
+# Env
+.env
+
+# OS
+.DS_Store
+Thumbs.db
