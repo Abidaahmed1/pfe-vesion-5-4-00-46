@@ -21,6 +21,8 @@ public class LigneInventaire {
 
     private Integer stockPhysique;
     private Integer stockTheorique;
+    private Integer ecart;
+    private Integer tentativePrecedente;
     private LocalDateTime dateScan;
 
     @Enumerated(EnumType.STRING)

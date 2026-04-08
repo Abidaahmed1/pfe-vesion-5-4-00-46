@@ -1,0 +1,142 @@
+services:
+  # Base de données
+  postgres:
+    image: postgres:16
+    container_name: postgres_keycloak
+    volumes:
+      - appgestionstock_postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5433:5432"
+    tty: true
+    restart: always
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U keycloak" ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # Keycloak
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.4
+    container_name: keycloak_dev
+    command: start-dev --db=postgres
+    ports:
+      - "8085:8080"
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: password
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: "xforwarded"
+      KC_HTTP_RELATIVE_PATH: "/"
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    volumes:
+      - ./appGestionStock/keycloak-theme:/opt/keycloak/themes
+      - ./appGestionStock/myrealm-export.json:/opt/keycloak/data/import/myrealm.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Votre Backend MOBILE
+  backend-mobile:
+    build:
+      context: ./gestionStock-backend-mobile
+      dockerfile: Dockerfile
+    container_name: spring_backend_mobile
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/gestionstock_db
+      - SPRING_DATASOURCE_USERNAME=postgres_bd
+      - SPRING_DATASOURCE_PASSWORD=postgres_bd
+      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.PostgreSQLDialect
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=https://nontrigonometrical-danita-nonperforming.ngrok-free.dev/realms/myrealm
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak:8080/realms/myrealm/protocol/openid-connect/certs
+      - KEYCLOAK_AUTH_SERVER_URL=http://keycloak:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Votre Backend WEB (Principal)
+  backend-web:
+    build:
+      context: ./appGestionStock/gestionStock-backend
+      dockerfile: Dockerfile
+    container_name: spring_backend_web
+    ports:
+      - "8095:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/gestionstock_db
+      - SPRING_DATASOURCE_USERNAME=postgres_bd
+      - SPRING_DATASOURCE_PASSWORD=postgres_bd
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://localhost:8085/realms/myrealm
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak:8080/realms/myrealm/protocol/openid-connect/certs
+      - KEYCLOAK_AUTH_SERVER_URL=http://keycloak:8080
+      # Stockage local : fiable, pas de dépendance Nextcloud
+      - FILE_STORAGE_TYPE=local
+      - FILE_LOCAL_UPLOAD_DIR=/app/uploads
+    volumes:
+      - backend_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Service Nextcloud
+  nextcloud:
+    image: nextcloud:latest
+    container_name: nextcloud_master
+    ports:
+      - "8082:80"
+    environment:
+      - NEXTCLOUD_ADMIN_USER=admin
+      - NEXTCLOUD_ADMIN_PASSWORD=StockMasters123
+      - NEXTCLOUD_TRUSTED_DOMAINS=localhost nextcloud
+    volumes:
+      - nextcloud_data:/var/www/html
+
+  # Proxy Mobile
+  mobile-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    container_name: mobile_proxy_master
+    ports:
+      - "9000:9000"
+    environment:
+      - KEYCLOAK_HOST=keycloak
+      - BACKEND_HOST=backend-mobile
+    depends_on:
+      - backend-mobile
+      - backend-web
+      - keycloak
+
+  # Ngrok automatique
+  ngrok_tunnel:
+    image: ngrok/ngrok:latest
+    container_name: ngrok_mobile_tunnel
+    environment:
+      - NGROK_AUTHTOKEN=3C1SI0C8O6i3l9GXhbiyigZfELs_49q3P3u6MyLLd73EHuPzK
+    command:
+      - http
+      - mobile-proxy:9000
+      - --url=nontrigonometrical-danita-nonperforming.ngrok-free.dev
+    depends_on:
+      - mobile-proxy
+
+volumes:
+  appgestionstock_postgres_data:
+    external: true
+  nextcloud_data:
+  # Volume persistant pour les images uploadées via le backend web
+  backend_uploads:

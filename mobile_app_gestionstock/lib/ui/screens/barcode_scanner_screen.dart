@@ -18,19 +18,23 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
   bool isProcessing = false;
 
   Future<void> _onDetect(BarcodeCapture capture) async {
+    // Check isProcessing first to avoid overlapping scans
     if (isProcessing) return;
 
-    final List<Barcode> barcodes = capture.barcodes;
-    if (barcodes.isNotEmpty) {
-      final String? code = barcodes.first.rawValue;
-      if (code != null) {
-        setState(() => isProcessing = true);
-        controller.stop();
-        await _processBarcode(code);
-        if (mounted) {
-          setState(() => isProcessing = false);
-          controller.start();
-        }
+    final String? code = capture.barcodes.firstOrNull?.rawValue;
+    if (code == null) return;
+
+    try {
+      setState(() => isProcessing = true);
+
+      // We process the barcode without stopping the camera to avoid
+      // UI thread blocking found on some devices (Xiaomi/Impeller issues).
+      await _processBarcode(code);
+    } catch (e) {
+      debugPrint("Scanner error: $e");
+    } finally {
+      if (mounted) {
+        setState(() => isProcessing = false);
       }
     }
   }
@@ -39,18 +43,25 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     try {
       final api = Provider.of<ApiService>(context, listen: false);
 
-      // Fetch specific piece details
-      final response = await api.get('/mobile/pieces/info?barcode=$barcode');
+      // Optimization: Fetch piece info and active inventory in parallel
+      final results = await Future.wait([
+        api.get('/mobile/pieces/info?barcode=$barcode'),
+        api.get('/mobile/inventaires/active'),
+      ]);
+
+      final pieceResponse = results[0];
+      final invRes = results[1];
 
       if (mounted) {
-        if (response.statusCode == 200 && response.data != null) {
-          final piece = response.data;
+        if (pieceResponse.statusCode == 200 && pieceResponse.data != null) {
+          final piece = pieceResponse.data;
 
           Map<String, dynamic>? activeLine;
           bool isNotInInventory = false;
-          try {
-            final invRes = await api.get('/mobile/inventaires/active');
-            if (invRes.statusCode == 200) {
+
+          if (invRes.statusCode == 200 && invRes.data != null) {
+            try {
+              // Now fetch lines only if we have an active inventory
               final linesRes = await api.get(
                 '/mobile/inventaires/${invRes.data['id']}/lignes',
               );
@@ -60,8 +71,8 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
               } catch (_) {
                 isNotInInventory = true;
               }
-            }
-          } catch (_) {}
+            } catch (_) {}
+          }
 
           await _showPieceDetails(piece, barcode, activeLine, isNotInInventory);
         } else {
@@ -93,11 +104,14 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
   ]) async {
     bool isLockedByOther = false;
     bool isArchived = piece['archivee'] == true;
+    bool isValideOrRefuse = false;
 
     if (activeLine != null) {
       final status = activeLine['statut'];
       final isMine = activeLine['isMine'] == true;
-      if (status != 'A_SCANNER' && !isMine && status != null) {
+      if (status == 'VALIDE' || status == 'REFUSE') {
+        isValideOrRefuse = true;
+      } else if (status != 'A_SCANNER' && !isMine && status != null) {
         isLockedByOther = true;
       }
     }
@@ -151,18 +165,21 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
                       child:
-                          piece['imageUrl'] != null &&
-                              (piece['imageUrl'] as String).isNotEmpty
+                          (piece['imageUrl'] != null &&
+                              (piece['imageUrl'] as String).isNotEmpty)
                           ? Image.network(
                               piece['imageUrl'].toString().startsWith('http')
                                   ? piece['imageUrl']
                                   : "${AppConstants.webBackendUrl}${piece['imageUrl']}",
                               fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Image.asset(
+                                'assets/images/default-piece.png',
+                                fit: BoxFit.cover,
+                              ),
                             )
-                          : const Icon(
-                              Icons.inventory_2,
-                              color: Colors.white10,
-                              size: 40,
+                          : Image.asset(
+                              'assets/images/default-piece.png',
+                              fit: BoxFit.cover,
                             ),
                     ),
                   ),
@@ -367,17 +384,54 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
                           ],
                         ),
                       ),
+                    if (isValideOrRefuse)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0D9488).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: const [
+                            Icon(
+                              Icons.block,
+                              color: Color(0xFF0D9488),
+                              size: 16,
+                            ),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                "Cette pièce a déjà été auditée ou corrigée. Demandez la réactivation pour la scanner.",
+                                style: TextStyle(
+                                  color: Color(0xFF0D9488),
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     TextField(
                       controller: _quantityController,
                       keyboardType: TextInputType.number,
                       textAlign: TextAlign.center,
                       autofocus:
-                          !isLockedByOther && !isNotInInventory && !isArchived,
+                          !isLockedByOther &&
+                          !isNotInInventory &&
+                          !isArchived &&
+                          !isValideOrRefuse,
                       enabled:
-                          !isLockedByOther && !isNotInInventory && !isArchived,
+                          !isLockedByOther &&
+                          !isNotInInventory &&
+                          !isArchived &&
+                          !isValideOrRefuse,
                       style: TextStyle(
                         color:
-                            (isLockedByOther || isNotInInventory || isArchived)
+                            (isLockedByOther ||
+                                isNotInInventory ||
+                                isArchived ||
+                                isValideOrRefuse)
                             ? Colors.white30
                             : Colors.white,
                         fontSize: 32,
@@ -405,7 +459,8 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
                       isSubmitting ||
                           isLockedByOther ||
                           isNotInInventory ||
-                          isArchived
+                          isArchived ||
+                          isValideOrRefuse
                       ? null
                       : () {
                           final quantity = int.tryParse(
@@ -442,6 +497,8 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
                       : Text(
                           isArchived
                               ? "PIÈCE ARCHIVÉE"
+                              : isValideOrRefuse
+                              ? "DÉJÀ AUDITÉE"
                               : isNotInInventory
                               ? "HORS INVENTAIRE"
                               : isLockedByOther
@@ -452,7 +509,8 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
                             color:
                                 (isLockedByOther ||
                                     isNotInInventory ||
-                                    isArchived)
+                                    isArchived ||
+                                    isValideOrRefuse)
                                 ? Colors.white54
                                 : Colors.white,
                           ),

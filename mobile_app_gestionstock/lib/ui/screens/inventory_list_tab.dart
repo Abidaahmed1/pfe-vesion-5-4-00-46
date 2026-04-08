@@ -52,37 +52,6 @@ class _InventoryListTabState extends State<InventoryListTab> {
     }
   }
 
-  bool isCreating = false;
-
-  Future<void> _createInventory() async {
-    setState(() => isCreating = true);
-    try {
-      final api = Provider.of<ApiService>(context, listen: false);
-      final res = await api.post('/mobile/inventaires/create', data: {});
-
-      if (res.statusCode == 200 && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Nouvel inventaire créé avec succès !"),
-            backgroundColor: Colors.green,
-          ),
-        );
-        _fetchLines();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Erreur: $e"),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => isCreating = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     const slate900 = Color(0xFF0F172A);
@@ -196,22 +165,20 @@ class _InventoryListTabState extends State<InventoryListTab> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child:
-                (line['pieceImg'] != null &&
-                    (line['pieceImg'] as String).isNotEmpty)
+            child: (line['pieceImg'] != null && (line['pieceImg'] as String).isNotEmpty)
                 ? Image.network(
                     line['pieceImg'].startsWith('http')
                         ? line['pieceImg']
                         : "${AppConstants.webBackendUrl}${line['pieceImg']}",
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Icon(
-                      Icons.image_not_supported,
-                      color: slate900.withOpacity(0.1),
+                    errorBuilder: (_, __, ___) => Image.asset(
+                      'assets/images/default-piece.png',
+                      fit: BoxFit.cover,
                     ),
                   )
-                : Icon(
-                    Icons.inventory_2_outlined,
-                    color: slate900.withOpacity(0.2),
+                : Image.asset(
+                    'assets/images/default-piece.png',
+                    fit: BoxFit.cover,
                   ),
           ),
         ),
@@ -382,39 +349,12 @@ class _InventoryListTabState extends State<InventoryListTab> {
             ),
             const SizedBox(height: 12),
             Text(
-              "Voulez-vous lancer un nouvel audit de stock ?",
+              "En attente d'un inventaire planifié par l'administration.",
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: slate900.withOpacity(0.4),
                 fontSize: 15,
                 height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton.icon(
-                onPressed: isCreating ? null : _createInventory,
-                icon: isCreating
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.add_task),
-                label: Text(isCreating ? "CRÉATION..." : "LANCER L'AUDIT"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 0,
-                ),
               ),
             ),
           ],

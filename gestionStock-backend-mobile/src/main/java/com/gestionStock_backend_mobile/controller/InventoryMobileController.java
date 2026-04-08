@@ -157,6 +157,12 @@ public class InventoryMobileController {
                             "Cette pièce ne fait pas partie de cet inventaire (ID=" + id + ")"));
         }
 
+        if (ligne.getStatutLigne() == LigneStatut.VALIDE || ligne.getStatutLigne() == LigneStatut.REFUSE) {
+            return ResponseEntity.ok(
+                    Map.of("success", false, "message",
+                            "Cette pièce a déjà été auditée (Validée/Refusée) ou corrigée en stock. Demandez à l'auditeur de réactiver la ligne pour pouvoir la scanner de nouveau."));
+        }
+
         if (ligne.getStatutLigne() != LigneStatut.A_SCANNER) {
             if (ligne.getResponsableLogistiqueId() != null && !ligne.getResponsableLogistiqueId().equals(userId)) {
                 return ResponseEntity.ok(
@@ -177,6 +183,7 @@ public class InventoryMobileController {
         }
 
         ligne.setStockPhysique(physicalStock);
+        ligne.setEcart(physicalStock - (ligne.getStockTheorique() != null ? ligne.getStockTheorique() : 0));
         if (justification != null && !justification.trim().isEmpty()) {
             ligne.setJustification(justification);
         }

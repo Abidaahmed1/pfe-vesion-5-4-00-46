@@ -1,0 +1,6 @@
+FROM node:20-slim
+WORKDIR /app
+COPY mobile_proxy.js .
+RUN npm install http-proxy
+EXPOSE 9000
+CMD ["node", "mobile_proxy.js"]
