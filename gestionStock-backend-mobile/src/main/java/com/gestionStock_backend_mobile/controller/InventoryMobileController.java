@@ -2,8 +2,10 @@ package com.gestionStock_backend_mobile.controller;
 
 import com.gestionStock_backend_mobile.entity.Stock.Inventaire;
 import com.gestionStock_backend_mobile.entity.Stock.LigneInventaire;
+import com.gestionStock_backend_mobile.entity.Stock.LigneInventaireHistorique;
 import com.gestionStock_backend_mobile.entity.Stock.LigneStatut;
 import com.gestionStock_backend_mobile.repository.Stock.InventaireRepository;
+import com.gestionStock_backend_mobile.repository.Stock.LigneInventaireHistoriqueRepository;
 import com.gestionStock_backend_mobile.repository.Stock.LigneInventaireRepository;
 import com.gestionStock_backend_mobile.repository.piece.PieceDetacheeRepository;
 import com.gestionStock_backend_mobile.entity.entreprise.Entreprise;
@@ -30,6 +32,7 @@ public class InventoryMobileController {
 
     private final InventaireRepository inventaireRepository;
     private final LigneInventaireRepository ligneInventaireRepository;
+    private final LigneInventaireHistoriqueRepository ligneInventaireHistoriqueRepository;
     private final PieceDetacheeRepository pieceDetacheeRepository;
     private final UserService userService;
     private final NotificationService notificationService;
@@ -51,24 +54,58 @@ public class InventoryMobileController {
                 })
                 .orElse(ResponseEntity.noContent().build());
     }
-
-    @GetMapping("/{id}/stats")
-    public ResponseEntity<Map<String, Object>> getStats(@PathVariable Long id) {
-        String userId = userService.getCurrentUserId();
-        if (userId == null)
-            return ResponseEntity.status(401).build();
-
-        long total = ligneInventaireRepository.countByInventaireId(id);
-        long scanned = ligneInventaireRepository.countByInventaireIdAndStatutLigne(id, LigneStatut.EN_ATTENTE_AUDIT);
-
-        Map<String, Object> stats = new HashMap<>();
-        stats.put("totalPieces", total);
-        stats.put("scannedPieces", scanned);
-        stats.put("progress", total == 0 ? 0 : (double) scanned / total);
-        stats.put("lastScan", LocalDateTime.now());
-
-        return ResponseEntity.ok(stats);
-    }
+    /*
+     * @GetMapping("/{id}/stats")
+     * public ResponseEntity<Map<String, Object>> getStats(@PathVariable Long id) {
+     * String userId = userService.getCurrentUserId();
+     * if (userId == null)
+     * return ResponseEntity.status(401).build();
+     * 
+     * long total = ligneInventaireRepository.countByInventaireId(id);
+     * long aScanner =
+     * ligneInventaireRepository.countByInventaireIdAndStatutLigne(id,
+     * LigneStatut.A_SCANNER);
+     * long scanned = total - aScanner;
+     * 
+     * long discrepanciesCount =
+     * ligneInventaireRepository.findByInventaireId(id).stream()
+     * .filter(l -> l.getEcart() != null && l.getEcart() != 0)
+     * .count();
+     * 
+     * List<Map<String, String>> piecesARecompter =
+     * ligneInventaireRepository.findByInventaireId(id).stream()
+     * .filter(l -> l.getStatutLigne() == LigneStatut.A_RECOMPTER)
+     * .map(l -> {
+     * Map<String, String> m = new HashMap<>();
+     * m.put("pieceNom", l.getPiece() != null ? l.getPiece().getDesignation() :
+     * "Inconnu");
+     * String respId = l.getResponsableLogistiqueId();
+     * m.put("responsableId", respId != null ? respId : "inconnu");
+     * String respNom = "Inconnu";
+     * if (respId != null) {
+     * respNom = userService.getUserById(respId)
+     * .map(u -> (u.getFirstName() != null ? u.getFirstName() + " " +
+     * u.getLastName()
+     * : "Responsable"))
+     * .orElse("Responsable Inconnu");
+     * }
+     * m.put("responsableNom", respNom);
+     * m.put("message", "À recompter");
+     * return m;
+     * }).toList();
+     * 
+     * Map<String, Object> stats = new HashMap<>();
+     * stats.put("totalPieces", total);
+     * stats.put("scannedPieces", scanned);
+     * stats.put("progress", total == 0 ? 0 : (double) scanned / total);
+     * stats.put("lastScan", LocalDateTime.now());
+     * stats.put("piecesARecompter", piecesARecompter);
+     * stats.put("aRecompterCount", piecesARecompter.size());
+     * stats.put("discrepanciesCount", discrepanciesCount);
+     * 
+     * return ResponseEntity.ok(stats);
+     * }
+     */
 
     @GetMapping("/{id}/lignes")
     public ResponseEntity<List<Map<String, Object>>> getLines(@PathVariable Long id) {
@@ -80,18 +117,22 @@ public class InventoryMobileController {
                 .map(l -> {
                     Map<String, Object> m = new HashMap<>();
                     m.put("id", l.getId());
-                    m.put("pieceId", l.getPiece().getId());
-                    m.put("pieceNom", l.getPiece().getDesignation());
-                    m.put("pieceRef", l.getPiece().getReference());
-                    m.put("pieceCode", l.getPiece().getCodeBarre());
-                    m.put("pieceImg", l.getPiece().getImageUrl());
+                    m.put("pieceId", l.getPiece() != null ? l.getPiece().getId() : null);
+                    String designation = l.getPiece() != null ? l.getPiece().getDesignation() : "Inconnu";
+                    m.put("pieceNom", designation);
+                    m.put("pieceRef", l.getPiece() != null ? l.getPiece().getReference() : "N/A");
+                    m.put("pieceCode", l.getPiece() != null ? l.getPiece().getCodeBarre() : "N/A");
+                    String img = l.getPiece() != null ? l.getPiece().getImageUrl() : null;
+                    m.put("pieceImg", img);
+
+                    System.out.println("[DEBUG] Line " + l.getId() + ": Piece=" + designation + ", Img=" + img);
                     m.put("statut", l.getStatutLigne());
                     m.put("stockTheorique", l.getStockTheorique());
                     m.put("stockPhysique", l.getStockPhysique());
                     m.put("justification", l.getJustification());
                     m.put("isMine", userId.equals(l.getResponsableLogistiqueId()));
 
-                    if (l.getPiece().getDetails() != null) {
+                    if (l.getPiece() != null && l.getPiece().getDetails() != null) {
                         List<Map<String, String>> details = l.getPiece().getDetails().stream()
                                 .map(d -> {
                                     Map<String, String> dm = new HashMap<>();
@@ -114,104 +155,158 @@ public class InventoryMobileController {
 
     @PostMapping("/{id}/scan")
     public ResponseEntity<Map<String, Object>> scanBarcode(@PathVariable Long id,
-            @RequestBody Map<String, Object> body) {
-        String barcode = (String) body.get("barcode");
-        Integer physicalStock = (body.get("physicalStock") != null) ? ((Number) body.get("physicalStock")).intValue()
-                : 0;
-        Boolean force = (body.get("force") != null) ? (Boolean) body.get("force") : false;
-        String justification = (String) body.get("justification");
+            @RequestBody Map<String, Object> request) {
+        System.out.println("[SCAN] ===> START: id=" + id + ", request=" + request);
 
-        Entreprise entreprise = userService.getCurrentUserEntreprise();
-        if (entreprise == null) {
-            return ResponseEntity.ok(
-                    Map.of("success", false, "message", "Utilisateur non rattaché à une entreprise"));
-        }
+        try {
+            String barcode = (String) request.get("barcode");
 
-        String userId = userService.getCurrentUserId();
-        if (userId == null)
-            return ResponseEntity.ok(Map.of("success", false, "message", "Utilisateur non authentifié"));
+            // 1. Parsing Quantité
+            Integer physicalStock = 0;
+            try {
+                Object psObj = request.get("physicalStock");
+                if (psObj != null) {
+                    if (psObj instanceof Number)
+                        physicalStock = ((Number) psObj).intValue();
+                    else
+                        physicalStock = Integer.parseInt(psObj.toString());
+                }
+            } catch (Exception ex) {
+                System.err.println("[SCAN] Qty parse error: " + ex.getMessage());
+            }
 
-        Optional<PieceDetachee> pieceOpt = pieceDetacheeRepository.findByCodeBarreAndEntreprise(barcode, entreprise);
-        if (pieceOpt.isEmpty()) {
-            return ResponseEntity.ok(Map.of("success", false, "message", "Code barre inconnu dans votre entreprise"));
-        }
+            Boolean force = Boolean.TRUE.equals(request.get("force"));
+            String justification = (String) request.get("justification");
 
-        PieceDetachee piece = pieceOpt.get();
+            // 2. Identification Utilisateur & Entreprise
+            System.out.println("[SCAN] Identifying user...");
+            String userId = userService.getCurrentUserId();
+            Entreprise entreprise = userService.getCurrentUserEntreprise();
 
-        System.out.println("[SCAN] Piece found: " + piece.getDesignation() + " | archivee=" + piece.getArchivee());
+            // Fallback pour les tests si sécurité bypassée
+            if (userId == null) {
+                System.out.println("[SCAN] WARNING: userId is null, using 'MOBILE_APP'");
+                userId = "MOBILE_APP";
+            }
 
-        if (Boolean.TRUE.equals(piece.getArchivee())) {
-            return ResponseEntity.ok(
-                    Map.of("success", false, "message", "Cette pièce est archivée et ne peut pas être scannée"));
-        }
+            // 3. Recherche de la pièce
+            System.out.println("[SCAN] Searching piece: " + barcode);
+            PieceDetachee piece = null;
+            if (entreprise != null) {
+                piece = pieceDetacheeRepository.findByCodeBarreAndEntreprise(barcode, entreprise).orElse(null);
+            }
 
-        LigneInventaire ligne = ligneInventaireRepository.findByInventaireIdAndPieceId(id, piece.getId())
-                .orElse(null);
+            if (piece == null) {
+                System.out.println("[SCAN] Piece not found: " + barcode);
+                return ResponseEntity.ok(Map.of("success", false, "message", "Code barre inconnu (" + barcode + ")"));
+            }
 
-        System.out.println(
-                "[SCAN] Inventaire #" + id + " | Piece #" + piece.getId() + " | Ligne found=" + (ligne != null));
+            // 4. Recherche de la ligne d'inventaire
+            System.out.println("[SCAN] Linking with inventory " + id + " for piece " + piece.getId());
+            LigneInventaire ligne = ligneInventaireRepository.findByInventaireIdAndPieceId(id, piece.getId())
+                    .orElse(null);
 
-        if (ligne == null) {
-            return ResponseEntity.ok(
-                    Map.of("success", false, "message",
-                            "Cette pièce ne fait pas partie de cet inventaire (ID=" + id + ")"));
-        }
+            if (ligne == null) {
+                System.out.println("[SCAN] Ligne not found in inventory " + id);
+                return ResponseEntity.ok(Map.of("success", false, "message", "Pièce non listée dans cet inventaire."));
+            }
 
-        if (ligne.getStatutLigne() == LigneStatut.VALIDE || ligne.getStatutLigne() == LigneStatut.REFUSE) {
-            return ResponseEntity.ok(
-                    Map.of("success", false, "message",
-                            "Cette pièce a déjà été auditée (Validée/Refusée) ou corrigée en stock. Demandez à l'auditeur de réactiver la ligne pour pouvoir la scanner de nouveau."));
-        }
+            // 5. Checks de Statut
+            if (ligne.getInventaire() != null && ligne.getInventaire().isEstValide()) {
+                return ResponseEntity
+                        .ok(Map.of("success", false, "message", "L'inventaire complet a été validé par l'auditeur."));
+            }
 
-        if (ligne.getStatutLigne() != LigneStatut.A_SCANNER) {
-            if (ligne.getResponsableLogistiqueId() != null && !ligne.getResponsableLogistiqueId().equals(userId)) {
-                return ResponseEntity.ok(
-                        Map.of("success", false, "message",
-                                "Cette pièce a déjà été scannée par un autre responsable logistique et est en attente d'audit. Vous ne pouvez pas la modifier."));
-            } else if (ligne.getResponsableLogistiqueId() != null
-                    && ligne.getResponsableLogistiqueId().equals(userId)) {
-                if (!force) {
-                    return ResponseEntity.ok(
-                            Map.of("success", false,
-                                    "requireConfirmation", true,
-                                    "oldStock", ligne.getStockPhysique(),
-                                    "message",
-                                    "Vous avez déjà scanné cette pièce avec la quantité " + ligne.getStockPhysique()
-                                            + ". Voulez-vous vraiment l'écraser par " + physicalStock + " ?"));
+            LigneStatut currentStatus = ligne.getStatutLigne();
+            System.out.println("[SCAN] Current status: " + currentStatus);
+
+            // 5. Checks de Statut
+            // On bloque SEULEMENT si l'inventaire GLOBAL est validé
+            if (ligne.getInventaire() != null && ligne.getInventaire().isEstValide()) {
+                return ResponseEntity
+                        .ok(Map.of("success", false, "message", "L'inventaire complet a été validé par l'auditeur."));
+            }
+
+            // Si c'est "À RECOMPTER", on autorise TOUJOURS le scan
+            if (currentStatus != LigneStatut.A_RECOMPTER) {
+                // Pour les autres statuts, on bloque UNIQUEMENT si l'auditeur a déjà finalisé
+                // sa décision (VALIDE ou REFUSE)
+                boolean isDecisionFinal = (currentStatus == LigneStatut.VALIDE || currentStatus == LigneStatut.REFUSE);
+
+                if (isDecisionFinal) {
+                    return ResponseEntity.ok(Map.of("success", false, "message", "Déjà validé par l'auditeur."));
                 }
             }
-        }
 
-        ligne.setStockPhysique(physicalStock);
-        ligne.setEcart(physicalStock - (ligne.getStockTheorique() != null ? ligne.getStockTheorique() : 0));
-        if (justification != null && !justification.trim().isEmpty()) {
+            if (currentStatus == LigneStatut.EN_ATTENTE_AUDIT && !force) {
+                Integer previousQty = ligne.getStockPhysique() != null ? ligne.getStockPhysique() : 0;
+                String msg = "Vous avez déjà saisi un stock de " + previousQty
+                        + " pour cet article. Voulez-vous modifier cette quantité ?";
+                return ResponseEntity.ok(Map.of("success", false, "requireConfirmation", true, "message", msg));
+            }
+
+            // 6. Sauvegarde
+            LigneStatut oldStatus = currentStatus;
+            Integer oldQty = ligne.getStockPhysique();
+
+            System.out.println(
+                    "[SCAN] Updating line " + ligne.getId() + " - OldQty: " + oldQty + ", NewQty: " + physicalStock);
+
+            ligne.setStockPhysique(physicalStock);
+            ligne.setEcart(physicalStock - (ligne.getStockTheorique() != null ? ligne.getStockTheorique() : 0));
             ligne.setJustification(justification);
-        }
-        ligne.setDateScan(LocalDateTime.now());
-        ligne.setStatutLigne(LigneStatut.EN_ATTENTE_AUDIT);
-        ligne.setResponsableLogistiqueId(userId);
+            ligne.setDateScan(LocalDateTime.now());
+            ligne.setStatutLigne(LigneStatut.EN_ATTENTE_AUDIT);
+            ligne.setResponsableLogistiqueId(userId);
 
-        ligneInventaireRepository.save(ligne);
+            ligneInventaireRepository.save(ligne);
+            // 6.5 Record History (Wrapped in try-catch to never block the main flow)
+            try {
+                String actionName = (oldQty == null) ? "SCAN_MOBILE" : "MISE_A_JOUR_SCAN";
 
-        // 🔔 Notifier les auditeurs qu'une pièce a été scannée
-        try {
-            String nomPiece = piece.getDesignation();
-            String msg = "La pièce '" + nomPiece + "' (Réf: " + piece.getReference()
-                    + ") vient d'être scannée avec une quantité de " + physicalStock + ".";
-            notificationService.createNotificationForRoles(
-                    "SCAN EFFECTUÉ",
-                    msg,
-                    NotificationType.INFO,
-                    java.util.Arrays.asList(Role.AUDITEUR, Role.ADMINISTRATEUR));
+                // Si on était en recomptage, on utilise une action spécifique
+                if (oldStatus == LigneStatut.A_RECOMPTER) {
+                    actionName = "RECOMPTAGE_MOBILE";
+                }
+
+                String detailMsg = (oldStatus == LigneStatut.A_RECOMPTER)
+                        ? "Recomptage effectué suite à demande auditeur"
+                        : (oldQty == null ? "Scan initial par mobile" : "Mise à jour de la quantité scannée");
+                if (justification != null && !justification.isBlank()) {
+                    detailMsg += " (Justification: " + justification + ")";
+                }
+
+                System.out.println("[SCAN] Recording history...");
+                addHistoryToLigne(ligne, actionName, detailMsg, oldQty, physicalStock, oldStatus,
+                        LigneStatut.EN_ATTENTE_AUDIT);
+                System.out.println("[SCAN] History recorded.");
+            } catch (Exception e) {
+                System.err.println("[SCAN] History error (non-blocking): " + e.getMessage());
+            }
+
+            System.out.println("[SCAN] SUCCESS for barcode: " + barcode);
+
+            // 7. Notification (Async catch)
+            try {
+                notificationService.createNotificationForRoles("SCAN", piece.getDesignation() + " scanné",
+                        NotificationType.INFO, java.util.Arrays.asList(Role.AUDITEUR));
+            } catch (Exception e) {
+                System.out.println("[SCAN] Notify fail: " + e.getMessage());
+            }
+
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("success", true);
+            responseData.put("message", "Scan enregistré");
+            responseData.put("piece", piece.getDesignation());
+            responseData.put("ecart", ligne.getEcart());
+            return ResponseEntity.ok(responseData);
+
         } catch (Exception e) {
-            System.err.println("[NOTIF] Erreur lors de l'envoi de la notification de scan: " + e.getMessage());
+            System.err.println("[SCAN] UNEXPECTED CRASH:");
+            e.printStackTrace();
+            String msg = (e.getMessage() != null) ? e.getMessage() : e.getClass().getSimpleName();
+            return ResponseEntity.status(500).body(Map.of("success", false, "message", "Erreur fatale: " + msg));
         }
-
-        Map<String, Object> res = new HashMap<>();
-        res.put("success", true);
-        res.put("piece", piece.getDesignation());
-        res.put("ecart", physicalStock - ligne.getStockTheorique());
-        return ResponseEntity.ok(res);
     }
 
     @PostMapping("/create")
@@ -275,9 +370,38 @@ public class InventoryMobileController {
         }
 
         LigneInventaire ligne = ligneOpt.get();
+        String oldJustification = ligne.getJustification();
         ligne.setJustification(justification);
         ligneInventaireRepository.save(ligne);
 
+        addHistoryToLigne(ligne, "MISE_A_JOUR_SCAN",
+                "Mise à jour de la justification (Ancienne: " + (oldJustification != null ? oldJustification : "aucune")
+                        + ")",
+                ligne.getStockPhysique(), ligne.getStockPhysique(),
+                ligne.getStatutLigne(), ligne.getStatutLigne());
+
         return ResponseEntity.ok(Map.of("success", true));
+    }
+
+    private void addHistoryToLigne(LigneInventaire ligne, String action, String details,
+            Integer oldVal, Integer newVal,
+            LigneStatut oldStat, LigneStatut newStat) {
+        try {
+            com.gestionStock_backend_mobile.entity.user.User currentUser = userService.getCurrentUser().orElse(null);
+            LigneInventaireHistorique h = LigneInventaireHistorique.builder()
+                    .ligneInventaire(ligne)
+                    .action(action)
+                    .details(details)
+                    .ancienneValeur(oldVal)
+                    .nouvelleValeur(newVal)
+                    .ancienStatut(oldStat)
+                    .nouveauStatut(newStat)
+                    .date(LocalDateTime.now())
+                    .utilisateur(currentUser)
+                    .build();
+            ligneInventaireHistoriqueRepository.save(h);
+        } catch (Exception e) {
+            System.err.println("[HISTORY] Error recording scan history: " + e.getMessage());
+        }
     }
 }

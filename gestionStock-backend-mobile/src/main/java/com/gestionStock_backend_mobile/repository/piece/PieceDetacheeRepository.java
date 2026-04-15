@@ -8,9 +8,11 @@ import org.springframework.data.repository.query.Param;
 import java.util.Optional;
 
 public interface PieceDetacheeRepository extends JpaRepository<PieceDetachee, Long> {
-    Optional<PieceDetachee> findByCodeBarre(String codeBarre);
+    // Optional<PieceDetachee> findByCodeBarre(String codeBarre);
     Optional<PieceDetachee> findByCodeBarreAndEntreprise(String codeBarre, Entreprise entreprise);
+
     java.util.List<PieceDetachee> findByEntreprise(Entreprise entreprise);
+
     java.util.List<PieceDetachee> findByEntrepriseAndArchiveeFalse(Entreprise entreprise);
 
     @Query("SELECT p FROM PieceDetachee p WHERE p.entreprise = :entreprise AND (p.archivee IS NULL OR p.archivee = false)")

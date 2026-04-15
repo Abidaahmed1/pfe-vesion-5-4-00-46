@@ -43,8 +43,10 @@ dependencies:
   mobile_scanner: ^6.0.0
   intl: ^0.19.0
   jwt_decoder: ^2.0.1
+  flutter_native_splash: ^2.4.4
 
 dev_dependencies:
+  flutter_launcher_icons: ^0.13.1
   flutter_test:
     sdk: flutter
 
@@ -54,6 +56,19 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+
+flutter_native_splash:
+  color: "#0D9488"
+  # image: "assets/logo.png"
+  android_12:
+    # image: "assets/logo.png"
+    color: "#0D9488"
+  fullscreen: true
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

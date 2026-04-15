@@ -8,7 +8,9 @@ class NavigationProvider with ChangeNotifier {
 
   void setTab(int index) {
     _currentIndex = index;
-    pageController.jumpToPage(index);
+    if (pageController.hasClients) {
+      pageController.jumpToPage(index);
+    }
     notifyListeners();
   }
 }

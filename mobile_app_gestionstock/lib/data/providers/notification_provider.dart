@@ -6,6 +6,7 @@ class NotificationProvider with ChangeNotifier {
   final ApiService _apiService;
   List<dynamic> _notifications = [];
   int _unreadCount = 0;
+  bool _isLoading = false;
   Timer? _pollingTimer;
 
   NotificationProvider(this._apiService) {
@@ -15,17 +16,28 @@ class NotificationProvider with ChangeNotifier {
 
   List<dynamic> get notifications => _notifications;
   int get unreadCount => _unreadCount;
+  bool get isLoading => _isLoading;
 
-  Future<void> fetchNotifications() async {
+  Future<void> fetchNotifications({bool silent = false}) async {
+    if (!silent) {
+      _isLoading = true;
+      notifyListeners();
+    }
     try {
       final response = await _apiService.get('/mobile/notifications');
       if (response.statusCode == 200) {
         _notifications = response.data;
         _updateUnreadCount();
-        notifyListeners();
       }
     } catch (e) {
-      debugPrint("Error fetching notifications: $e");
+      debugPrint('Notification Fetch Error: $e');
+    } finally {
+      if (!silent) {
+        _isLoading = false;
+        notifyListeners();
+      } else {
+        notifyListeners(); // Always notify for new data
+      }
     }
   }
 
@@ -43,7 +55,7 @@ class NotificationProvider with ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint("Error marking notification as read: $e");
+      // Silence technical error display
     }
   }
 
@@ -56,14 +68,14 @@ class NotificationProvider with ChangeNotifier {
       _unreadCount = 0;
       notifyListeners();
     } catch (e) {
-      debugPrint("Error marking all notifications as read: $e");
+      // Silence technical error display
     }
   }
 
   void _startPolling() {
     _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      fetchNotifications();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      fetchNotifications(silent: true);
     });
   }
 

@@ -22,12 +22,28 @@ public class SecurityConfig {
 	private JwtAuthConverter jwtAuthConverter;
 
 	@Bean
+	public org.springframework.web.filter.OncePerRequestFilter requestLoggingFilter() {
+		return new org.springframework.web.filter.OncePerRequestFilter() {
+			@Override
+			protected void doFilterInternal(jakarta.servlet.http.HttpServletRequest request,
+					jakarta.servlet.http.HttpServletResponse response, jakarta.servlet.FilterChain filterChain)
+					throws jakarta.servlet.ServletException, java.io.IOException {
+				System.out.println("[BACKEND-LOG] " + request.getMethod() + " " + request.getRequestURI());
+				filterChain.doFilter(request, response);
+			}
+		};
+	}
+
+	@Bean
 	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
 		http.csrf(csrf -> csrf.disable()).cors(cors -> cors.configurationSource(corsConfigurationSource()))
+				.addFilterBefore(requestLoggingFilter(), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 						.requestMatchers("/api/test/public").permitAll()
+						.requestMatchers("/api/images/**").permitAll()
+						.requestMatchers("/api/mobile/**").permitAll() // Diagnostic: autoriser tout pour le mobile
 						.requestMatchers("/api/admin/**").hasRole("ADMINISTRATEUR")
 						.requestMatchers("/api/**").authenticated()
 						.anyRequest().permitAll())
@@ -41,7 +57,8 @@ public class SecurityConfig {
 
 		CorsConfiguration configuration = new CorsConfiguration();
 
-		configuration.setAllowedOrigins(List.of("*")); // For mobile, usually more permissive or specific to mobile origin
+		configuration.setAllowedOriginPatterns(List.of("*")); // For mobile, use patterns to be compatible with
+																// credentials
 
 		configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
 

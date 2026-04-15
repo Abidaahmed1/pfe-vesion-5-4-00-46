@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../data/services/api_service.dart';
+import '../../data/providers/inventory_provider.dart';
 
 class InventoryStatsScreen extends StatefulWidget {
-  const InventoryStatsScreen({super.key});
+  final Map<String, dynamic>? initialActiveInventory;
+  final Map<String, dynamic>? initialStats;
+
+  const InventoryStatsScreen({
+    super.key,
+    this.initialActiveInventory,
+    this.initialStats,
+  });
 
   @override
   State<InventoryStatsScreen> createState() => _InventoryStatsScreenState();
@@ -12,12 +20,41 @@ class InventoryStatsScreen extends StatefulWidget {
 class _InventoryStatsScreenState extends State<InventoryStatsScreen> {
   Map<String, dynamic>? activeInventory;
   Map<String, dynamic>? stats;
-  bool isLoading = true;
+  bool isLoading = false;
+
+  final Color primaryColor = const Color(0xFF0D9488);
+  final Color slate900 = const Color(0xFF0F172A);
 
   @override
   void initState() {
     super.initState();
-    _fetchData();
+    activeInventory = widget.initialActiveInventory;
+    stats = widget.initialStats;
+    if (activeInventory == null || stats == null) {
+      _fetchData();
+    } else {
+      // Fetch fresh data in background without showing loading spinner
+      WidgetsBinding.instance.addPostFrameCallback((_) => _fetchDataBackground());
+    }
+  }
+
+  Future<void> _fetchDataBackground() async {
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      final invRes = await api.get('/mobile/inventaires/active');
+      if (invRes.statusCode == 200 && invRes.data != null) {
+        final inv = invRes.data;
+        final statsRes = await api.get('/mobile/inventaires/${inv['id']}/stats');
+        if (statsRes.statusCode == 200 && mounted) {
+          setState(() {
+            activeInventory = inv;
+            stats = statsRes.data;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching inventory stats: $e');
+    }
   }
 
   Future<void> _fetchData() async {
@@ -37,7 +74,7 @@ class _InventoryStatsScreenState extends State<InventoryStatsScreen> {
         }
       }
     } catch (e) {
-      print('Error fetching inventory stats: $e');
+      debugPrint('Error fetching inventory stats: $e');
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
@@ -46,15 +83,35 @@ class _InventoryStatsScreenState extends State<InventoryStatsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Statistiques d'Inventaire")),
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        title: const Text(
+          "Statistiques d'Inventaire",
+          style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
+        shadowColor: Colors.black.withOpacity(0.05),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(color: const Color(0xFFE2E8F0), height: 1),
+        ),
+      ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator(color: primaryColor))
           : activeInventory == null
           ? _buildNoInventory()
-          : _buildStatsView(),
+          : RefreshIndicator(
+              color: primaryColor,
+              onRefresh: _fetchData,
+              child: _buildStatsView(),
+            ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _fetchData,
-        label: const Text("Actualiser"),
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        label: const Text("Actualiser", style: TextStyle(fontWeight: FontWeight.bold)),
         icon: const Icon(Icons.refresh),
       ),
     );
@@ -65,16 +122,23 @@ class _InventoryStatsScreenState extends State<InventoryStatsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.inventory_2_rounded, size: 80, color: Colors.grey),
-          const SizedBox(height: 16),
-          const Text(
-            "Aucun inventaire actif en cours",
-            style: TextStyle(fontSize: 18, color: Colors.grey),
+          Container(
+             padding: const EdgeInsets.all(24),
+             decoration: BoxDecoration(
+               color: primaryColor.withOpacity(0.1),
+               shape: BoxShape.circle,
+             ),
+             child: Icon(Icons.inventory_2_rounded, size: 60, color: primaryColor),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            "Veuillez en créer un depuis le Back Web",
-            style: TextStyle(color: Colors.blueGrey),
+          const SizedBox(height: 24),
+          Text(
+            "Aucun inventaire actif",
+            style: TextStyle(fontSize: 20, color: slate900, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            "Veuillez en créer un depuis la plateforme web",
+            style: TextStyle(color: slate900.withOpacity(0.5), fontSize: 14),
           ),
         ],
       ),
@@ -84,65 +148,110 @@ class _InventoryStatsScreenState extends State<InventoryStatsScreen> {
   Widget _buildStatsView() {
     final progress = (stats?['progress'] ?? 0.0) as double;
     final total = stats?['totalPieces'] ?? 0;
-    final scanned = stats?['scannedPieces'] ?? 0;
     final discrepancies = stats?['discrepanciesCount'] ?? 0;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildInventoryHeader(),
-          const SizedBox(height: 24),
-          _buildProgressCard(progress, scanned, total),
-          const SizedBox(height: 20),
-          Row(
+    return Consumer<InventoryProvider>(
+      builder: (context, invProv, _) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: _buildStatCard(
-                  "Total Pièces",
-                  "$total",
-                  Icons.layers,
-                  Colors.blue,
+              _buildInventoryHeader(),
+              const SizedBox(height: 32),
+              _buildProgressCard(progress, invProv.countValid + invProv.countPendingAudit, total),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildStatCard(
+                      "Capacité",
+                      "$total",
+                      Icons.layers_rounded,
+                      primaryColor,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _buildStatCard(
+                      "Écarts",
+                      "$discrepancies",
+                      Icons.warning_amber_rounded,
+                      const Color(0xFFEF4444),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+              Text(
+                "RÉPARTITION DU SCAN",
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: slate900.withOpacity(0.4),
+                  letterSpacing: 1.5,
                 ),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildStatCard(
-                  "Écarts",
-                  "$discrepancies",
-                  Icons.warning_amber,
-                  Colors.orange,
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: slate900.withOpacity(0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    _buildDistributionItem(
+                      "Validés",
+                      invProv.countValid,
+                      const Color(0xFF10B981),
+                      total,
+                    ),
+                    const Divider(height: 24, color: Color(0xFFF1F5F9)),
+                    _buildDistributionItem(
+                      "En attente",
+                      invProv.countPendingAudit,
+                      const Color(0xFF6366F1),
+                      total,
+                    ),
+                    const Divider(height: 24, color: Color(0xFFF1F5F9)),
+                    _buildDistributionItem(
+                      "À scanner",
+                      invProv.countToScan,
+                      const Color(0xFF94A3B8),
+                      total,
+                    ),
+                    const Divider(height: 24, color: Color(0xFFF1F5F9)),
+                    _buildDistributionItem(
+                      "Ré-audit",
+                      invProv.countReaudit,
+                      const Color(0xFFF59E0B),
+                      total,
+                    ),
+                    const Divider(height: 24, color: Color(0xFFF1F5F9)),
+                    _buildDistributionItem(
+                      "Refusés",
+                      invProv.countRefused,
+                      const Color(0xFFEF4444),
+                      total,
+                    ),
+                  ],
                 ),
               ),
+              const SizedBox(height: 80),
             ],
           ),
-          const SizedBox(height: 24),
-          const Text(
-            "Répartition du scan",
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
-          _buildScanningDistribution(scanned, total),
-          const SizedBox(height: 32),
-          Center(
-            child: ElevatedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text("Démarrer le scan de pièces"),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -150,14 +259,32 @@ class _InventoryStatsScreenState extends State<InventoryStatsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          activeInventory!['nom'] ?? 'Sans Nom',
-          style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+        Container(
+           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+           decoration: BoxDecoration(
+             color: primaryColor.withOpacity(0.1),
+             borderRadius: BorderRadius.circular(12),
+           ),
+           child: Text(
+             "EN COURS", 
+             style: TextStyle(color: primaryColor, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)
+           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 12),
         Text(
-          "Lancé le: ${activeInventory!['date']?.toString().substring(0, 10)}",
-          style: const TextStyle(color: Colors.grey),
+          activeInventory!['nom'] ?? 'Session sans nom',
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: slate900),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Icon(Icons.calendar_today_rounded, size: 14, color: slate900.withOpacity(0.5)),
+            const SizedBox(width: 6),
+            Text(
+              "Lancé le ${activeInventory!['date']?.toString().substring(0, 10)}",
+              style: TextStyle(color: slate900.withOpacity(0.5), fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ],
         ),
       ],
     );
@@ -167,125 +294,165 @@ class _InventoryStatsScreenState extends State<InventoryStatsScreen> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.blue.shade800, Colors.blue.shade600],
-        ),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: [
           BoxShadow(
-            color: Colors.blue.withOpacity(0.3),
-            blurRadius: 10,
+            color: slate900.withOpacity(0.03),
+            blurRadius: 15,
             offset: const Offset(0, 5),
           ),
         ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                "Progression Globale",
-                style: TextStyle(color: Colors.white, fontSize: 18),
-              ),
               Text(
-                "${(progress * 100).toInt()}%",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
+                "Progression Globale",
+                style: TextStyle(color: slate900, fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  "${(progress * 100).toInt()}%",
+                  style: TextStyle(
+                    color: primaryColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: progress,
-              backgroundColor: Colors.white.withOpacity(0.2),
-              color: Colors.white,
-              minHeight: 12,
-            ),
+          const SizedBox(height: 20),
+          Stack(
+            children: [
+               Container(
+                 height: 12,
+                 decoration: BoxDecoration(
+                   color: const Color(0xFFF1F5F9),
+                   borderRadius: BorderRadius.circular(10),
+                 ),
+               ),
+               FractionallySizedBox(
+                 widthFactor: progress.clamp(0.0, 1.0),
+                 child: Container(
+                   height: 12,
+                   decoration: BoxDecoration(
+                     color: primaryColor,
+                     borderRadius: BorderRadius.circular(10),
+                   ),
+                 ),
+               ),
+            ],
           ),
           const SizedBox(height: 12),
           Text(
             "$scanned sur $total pièces scannées",
-            style: const TextStyle(color: Colors.white70),
+            style: TextStyle(color: slate900.withOpacity(0.5), fontSize: 13, fontWeight: FontWeight.w600),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatCard(
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: CardTheme.of(context).color ?? Colors.grey.shade900,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: slate900.withOpacity(0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 32),
-          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(height: 20),
           Text(
             value,
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+            style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: slate900),
           ),
-          Text(title, style: const TextStyle(color: Colors.grey)),
+          Text(
+             title, 
+             style: TextStyle(color: slate900.withOpacity(0.5), fontSize: 13, fontWeight: FontWeight.w600)
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildScanningDistribution(int scanned, int total) {
-    final remaining = total - scanned;
-    return Column(
-      children: [
-        _buildDistributionItem("Pièces Scannées", scanned, Colors.green, total),
-        _buildDistributionItem("En attente", remaining, Colors.grey, total),
-      ],
-    );
-  }
 
-  Widget _buildDistributionItem(
-    String label,
-    int value,
-    Color color,
-    int total,
-  ) {
+
+  Widget _buildDistributionItem(String label, int value, Color color, int total) {
     final percent = total == 0 ? 0.0 : value / total;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    return Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
           ),
-          const SizedBox(width: 12),
-          Expanded(child: Text(label)),
-          Text("$value", style: const TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 100,
-            child: LinearProgressIndicator(
-              value: percent,
-              color: color,
-              backgroundColor: color.withOpacity(0.1),
-            ),
-          ),
-        ],
-      ),
+          child: Icon(label.contains("ttente") ? Icons.hourglass_empty_rounded : Icons.check_circle_outline_rounded, color: color, size: 20),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+           child: Column(
+             crossAxisAlignment: CrossAxisAlignment.start,
+             children: [
+                Text(label, style: TextStyle(fontWeight: FontWeight.bold, color: slate900, fontSize: 14)),
+                const SizedBox(height: 6),
+                Stack(
+                  children: [
+                     Container(
+                       height: 6,
+                       decoration: BoxDecoration(
+                         color: const Color(0xFFF1F5F9),
+                         borderRadius: BorderRadius.circular(4),
+                       ),
+                     ),
+                     FractionallySizedBox(
+                       widthFactor: percent.clamp(0.0, 1.0),
+                       child: Container(
+                         height: 6,
+                         decoration: BoxDecoration(
+                           color: color,
+                           borderRadius: BorderRadius.circular(4),
+                         ),
+                       ),
+                     ),
+                  ],
+                ),
+             ],
+           )
+        ),
+        const SizedBox(width: 16),
+        Text("$value", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: slate900)),
+      ],
     );
   }
 }

@@ -15,33 +15,28 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  final List<Widget> _pages = [
-    const DashboardTab(),
-    const InventoryListTab(),
-    const BarcodeScannerScreen(),
-    const ProfileTab(),
-  ];
-
   @override
   Widget build(BuildContext context) {
     const primaryColor = Color(0xFF0D9488);
     final nav = Provider.of<NavigationProvider>(context);
 
+    final List<Widget> pages = [
+      const DashboardTab(),
+      const InventoryListTab(),
+      nav.currentIndex == 2 ? const BarcodeScannerScreen() : const SizedBox(),
+      const ProfileTab(),
+    ];
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      body: PageView(
-        controller: nav.pageController,
-        physics: const NeverScrollableScrollPhysics(),
-        onPageChanged: (index) {
-          // Sync with nav provider
-        },
-        children: _pages,
-      ),
+      body: IndexedStack(index: nav.currentIndex, children: pages),
       bottomNavigationBar: Container(
         height: 88,
         decoration: BoxDecoration(
           color: Colors.white,
-          border: Border(top: BorderSide(color: const Color(0xFFE2E8F0), width: 1)),
+          border: Border(
+            top: BorderSide(color: const Color(0xFFE2E8F0), width: 1),
+          ),
           boxShadow: [
             BoxShadow(
               color: const Color(0xFF0F172A).withOpacity(0.03),
@@ -81,7 +76,7 @@ class _MainShellState extends State<MainShell> {
             _buildNavItem(
               Icons.inventory_2_outlined,
               Icons.inventory_2_rounded,
-              "Inventaires",
+              "Inventaire",
               1,
               nav.currentIndex,
             ),

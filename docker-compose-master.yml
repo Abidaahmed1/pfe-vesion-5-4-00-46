@@ -35,9 +35,8 @@ services:
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_HTTPS: "false"
       KC_HTTP_ENABLED: "true"
-      KC_PROXY_HEADERS: "xforwarded"
+      KC_PROXY: "edge"
       KC_HTTP_RELATIVE_PATH: "/"
-      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
     volumes:
       - ./appGestionStock/keycloak-theme:/opt/keycloak/themes
       - ./appGestionStock/myrealm-export.json:/opt/keycloak/data/import/myrealm.json
@@ -63,9 +62,17 @@ services:
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=https://nontrigonometrical-danita-nonperforming.ngrok-free.dev/realms/myrealm
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak:8080/realms/myrealm/protocol/openid-connect/certs
       - KEYCLOAK_AUTH_SERVER_URL=http://keycloak:8080
+      # Nextcloud config for serving piece images
+      - NEXTCLOUD_URL=http://nextcloud:80
+      - NEXTCLOUD_USERNAME=admin
+      - NEXTCLOUD_PASSWORD=StockMasters123
+      - NEXTCLOUD_BASE_PATH=/remote.php/dav/files/admin
+      - NEXTCLOUD_DOCUMENTS_FOLDER=pieces_images
     depends_on:
       postgres:
         condition: service_healthy
+      nextcloud:
+        condition: service_started
 
   # Votre Backend WEB (Principal)
   backend-web:
@@ -137,6 +144,6 @@ services:
 volumes:
   appgestionstock_postgres_data:
     external: true
-  nextcloud_data:
-  # Volume persistant pour les images uploadées via le backend web
+  nextcloud_data: # Volume persistant pour les images uploadées via le backend web
+
   backend_uploads:

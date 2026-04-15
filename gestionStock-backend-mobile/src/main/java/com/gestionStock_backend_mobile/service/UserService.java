@@ -34,6 +34,10 @@ public class UserService {
         return Optional.empty();
     }
 
+    public Optional<User> getUserById(String id) {
+        return userRepository.findById(id);
+    }
+
     public Entreprise getCurrentUserEntreprise() {
         return getCurrentUser().map(User::getEntreprise).orElse(null);
     }

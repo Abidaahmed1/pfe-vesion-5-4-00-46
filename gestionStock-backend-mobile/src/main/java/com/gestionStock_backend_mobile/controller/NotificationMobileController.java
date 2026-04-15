@@ -21,21 +21,24 @@ public class NotificationMobileController {
     @GetMapping
     public ResponseEntity<List<Notification>> getNotifications() {
         String userId = userService.getCurrentUserId();
-        if (userId == null) return ResponseEntity.status(403).build();
+        if (userId == null)
+            return ResponseEntity.status(403).build();
         return ResponseEntity.ok(notificationService.getNotificationsForUser(userId));
     }
 
     @GetMapping("/unread")
     public ResponseEntity<List<Notification>> getUnreadNotifications() {
         String userId = userService.getCurrentUserId();
-        if (userId == null) return ResponseEntity.status(403).build();
+        if (userId == null)
+            return ResponseEntity.status(403).build();
         return ResponseEntity.ok(notificationService.getUnreadNotificationsForUser(userId));
     }
 
     @GetMapping("/unread/count")
     public ResponseEntity<Map<String, Integer>> getUnreadCount() {
         String userId = userService.getCurrentUserId();
-        if (userId == null) return ResponseEntity.status(403).build();
+        if (userId == null)
+            return ResponseEntity.status(403).build();
         int count = notificationService.getUnreadNotificationsForUser(userId).size();
         return ResponseEntity.ok(Map.of("count", count));
     }
@@ -43,7 +46,8 @@ public class NotificationMobileController {
     @PostMapping("/{id}/read")
     public ResponseEntity<Void> markAsRead(@PathVariable Long id) {
         String userId = userService.getCurrentUserId();
-        if (userId == null) return ResponseEntity.status(403).build();
+        if (userId == null)
+            return ResponseEntity.status(403).build();
         notificationService.markAsRead(id, userId);
         return ResponseEntity.ok().build();
     }
@@ -51,7 +55,8 @@ public class NotificationMobileController {
     @PostMapping("/read-all")
     public ResponseEntity<Void> markAllAsRead() {
         String userId = userService.getCurrentUserId();
-        if (userId == null) return ResponseEntity.status(403).build();
+        if (userId == null)
+            return ResponseEntity.status(403).build();
         notificationService.markAllAsRead(userId);
         return ResponseEntity.ok().build();
     }

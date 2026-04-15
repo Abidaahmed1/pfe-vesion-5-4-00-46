@@ -42,4 +42,6 @@ class ApiService {
   Future<Response> delete(String path) async {
     return _dio.delete(path);
   }
+
+  String get baseUrl => _dio.options.baseUrl;
 }

@@ -27,22 +27,31 @@ class KeycloakService {
           'password': password,
           'scope': 'openid profile email', // Removed offline_access
         },
-        options: Options(contentType: Headers.formUrlEncodedContentType),
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          validateStatus: (status) => status! < 500, // Handle 4xx manually
+        ),
       );
 
       if (response.statusCode == 200) {
         final data = response.data;
         await _saveTokensDirect(data);
         return true;
+      } else if (response.statusCode == 401 || response.statusCode == 400) {
+        throw Exception('AUTH_FAILED');
+      } else {
+        throw Exception('SERVER_ERROR');
       }
-      return false;
     } catch (e) {
       if (e is DioException) {
-        print('Direct Login Error: ${e.response?.data ?? e.message}');
-      } else {
-        print('Direct Login Error: $e');
+        if (e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.receiveTimeout ||
+            e.type == DioExceptionType.connectionError) {
+          throw Exception('NO_CONNECTION');
+        }
+        throw Exception('SERVER_ERROR');
       }
-      return false;
+      rethrow;
     }
   }
 

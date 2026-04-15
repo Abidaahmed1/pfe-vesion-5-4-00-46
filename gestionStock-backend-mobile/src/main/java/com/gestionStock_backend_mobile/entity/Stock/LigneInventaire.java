@@ -4,7 +4,10 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.gestionStock_backend_mobile.entity.piece.PieceDetachee;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -14,6 +17,12 @@ import com.gestionStock_backend_mobile.entity.piece.PieceDetachee;
 @Entity
 @Table(name = "inventaire_details")
 public class LigneInventaire {
+
+    @OneToMany(mappedBy = "ligneInventaire", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OrderBy("date DESC")
+    @JsonManagedReference
+    @Builder.Default
+    private List<LigneInventaireHistorique> historique = new ArrayList<>();
     @Id
     @SequenceGenerator(name = "inventaire_details_seq", sequenceName = "inventaire_details_id_seq", allocationSize = 1)
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "inventaire_details_seq")

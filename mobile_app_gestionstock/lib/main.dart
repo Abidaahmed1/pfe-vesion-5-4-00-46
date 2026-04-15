@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'data/providers/auth_provider.dart';
 import 'data/providers/navigation_provider.dart';
 import 'data/providers/notification_provider.dart';
+import 'data/providers/inventory_provider.dart';
 import 'data/services/api_service.dart';
 import 'ui/screens/shell_screen.dart';
 
@@ -20,14 +21,27 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()..checkStatus()),
-        ChangeNotifierProvider(create: (_) => NavigationProvider()),
         Provider(create: (_) => ApiService()),
+        ChangeNotifierProxyProvider<ApiService, AuthProvider>(
+          create: (context) =>
+              AuthProvider(Provider.of<ApiService>(context, listen: false))
+                ..checkStatus(),
+          update: (context, api, previous) => previous ?? AuthProvider(api),
+        ),
+        ChangeNotifierProvider(create: (_) => NavigationProvider()),
         ChangeNotifierProxyProvider<ApiService, NotificationProvider>(
           create: (context) => NotificationProvider(
-              Provider.of<ApiService>(context, listen: false)),
+            Provider.of<ApiService>(context, listen: false),
+          ),
           update: (context, api, previous) =>
               previous ?? NotificationProvider(api),
+        ),
+        ChangeNotifierProxyProvider<ApiService, InventoryProvider>(
+          create: (context) => InventoryProvider(
+            Provider.of<ApiService>(context, listen: false),
+          ),
+          update: (context, api, previous) =>
+              previous ?? InventoryProvider(api),
         ),
       ],
       child: MaterialApp(
@@ -78,10 +92,134 @@ class MyApp extends StatelessWidget {
         ),
         home: Consumer<AuthProvider>(
           builder: (context, auth, _) {
+            if (auth.isCheckingAuth) {
+              return const LoadingSplash();
+            }
             return auth.isAuthenticated
                 ? const MainShell()
                 : const LoginScreen();
           },
+        ),
+      ),
+    );
+  }
+}
+
+class LoadingSplash extends StatefulWidget {
+  const LoadingSplash({super.key});
+
+  @override
+  State<LoadingSplash> createState() => _LoadingSplashState();
+}
+
+class _LoadingSplashState extends State<LoadingSplash> {
+  int _progress = 0;
+  String _message = "Initialisation...";
+
+  final List<String> _messages = [
+    "Vérification de la session...",
+    "Chargement des modules...",
+    "Connexion sécurisée...",
+    "Synchronisation du stock...",
+    "Presque prêt...",
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _progress = 5; // Start immediately
+    print("DEBUG: LoadingSplash initialisé");
+    _startLoadingSimulation();
+  }
+
+  void _startLoadingSimulation() {
+    // Simulate progress for better UX
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(milliseconds: 480));
+      if (!mounted) return false;
+
+      setState(() {
+        if (_progress < 100) {
+          _progress += 5;
+          _message =
+              _messages[(_progress / 21).toInt().clamp(
+                0,
+                _messages.length - 1,
+              )];
+        }
+      });
+      return _progress < 100;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0D9488),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // LOGO
+            Container(
+              padding: const EdgeInsets.all(25),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.inventory_2_rounded,
+                size: 80,
+                color: Color(0xFF0D9488),
+              ),
+            ),
+            const SizedBox(height: 40),
+            // TITRE
+            const Text(
+              "STOCKMASTER",
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+                letterSpacing: 2,
+              ),
+            ),
+            const SizedBox(height: 50),
+            // BARRE ET POURCENTAGE
+            Container(
+              width: 250,
+              child: Column(
+                children: [
+                  LinearProgressIndicator(
+                    value: _progress / 100,
+                    backgroundColor: Colors.white.withOpacity(0.2),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Colors.white,
+                    ),
+                    minHeight: 8,
+                  ),
+                  const SizedBox(height: 15),
+                  Text(
+                    "Chargement : $_progress%",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 40),
+            // MESSAGE
+            Text(
+              _message,
+              style: const TextStyle(color: Colors.white70, fontSize: 16),
+            ),
+          ],
         ),
       ),
     );
@@ -127,9 +265,16 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (mounted) {
         String msg = e.toString().replaceAll('Exception: ', '');
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(msg)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

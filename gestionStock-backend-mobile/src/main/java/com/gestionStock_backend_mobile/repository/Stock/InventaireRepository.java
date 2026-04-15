@@ -10,6 +10,6 @@ import org.springframework.data.repository.query.Param;
 public interface InventaireRepository extends JpaRepository<Inventaire, Long> {
     Optional<Inventaire> findFirstByEstTermineFalseOrderByDateDesc();
 
-    @Query("SELECT i FROM Inventaire i WHERE i.estTermine = false AND i.entrepriseId = :enterpriseId ORDER BY i.date DESC LIMIT 1")
+    @Query("SELECT i FROM Inventaire i WHERE i.estTermine = false AND i.estValide = false AND i.entrepriseId = :enterpriseId ORDER BY i.date DESC LIMIT 1")
     Optional<Inventaire> findLatestActiveForEnterprise(@Param("enterpriseId") Long enterpriseId);
 }
